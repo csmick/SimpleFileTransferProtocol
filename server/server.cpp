@@ -141,9 +141,20 @@ void Server::list_directory_contents() {
 
 void Server::make_directory() {
 	string size = receive_data();
-	string dir_name = receive_data();
+	string dir_path = receive_data();
 	
-	dir_name = rstrip(dir_name);
+	dir_path = rstrip(dir_path);
+	
+    struct stat sb;
+	if (stat(dir_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+		send_data("-2");
+	} else {
+		if(mkdir(dir_path.c_str(), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) == -1) {
+			perror("mkdir() failed");
+			exit(1);
+		}
+	}
+
 
 }
 
