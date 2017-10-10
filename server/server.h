@@ -20,7 +20,9 @@ class Server {
 		socklen_t client_addr_size;
 		void change_directory();
 		void list_directory_contents();
+		void quit();
 		string c_to_cpp_string(char *c_str);
+		string rstrip(string str);
 
 	public:
 

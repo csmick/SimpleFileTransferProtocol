@@ -90,7 +90,10 @@ string Server::receive_data() {
 
 void Server::change_directory() {
 
+	string size = receive_data();
 	string path = receive_data();
+	path = rstrip(path);
+
 	if(chdir(path.c_str()) == -1) {
 		perror("chdir() failed");
 		exit(1);
@@ -132,10 +135,16 @@ void Server::list_directory_contents() {
 	send_data(response);
 }
 
+void Server::quit() {
+
+	close(data_socket);
+	accept_connection();
+}
+
 void Server::parse_and_execute(string command) {
 
 	// trim trailing whitespace
-	command = command.substr(0, command.find_last_not_of(" \t\n") + 1);
+	command = rstrip(command);
 
 	if(command.compare("DWLD") == 0) {
 		printf("Download initiated\n");
@@ -162,6 +171,7 @@ void Server::parse_and_execute(string command) {
 	}
 	else if(command.compare("QUIT") == 0) {
 		printf("Quit initiated\n");
+		quit();
 	}
 	else {
 		cout << "Invalid command: " << command << endl;
@@ -177,4 +187,8 @@ string Server::c_to_cpp_string(char *c_str) {
 		str = string(c_str);
 	}
 	return str;
+}
+
+string Server::rstrip(string str) {
+	return str.substr(0, str.find_last_not_of(" \t\n") + 1);
 }
