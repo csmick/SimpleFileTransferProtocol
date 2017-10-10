@@ -21,9 +21,11 @@ class Server {
 		void change_directory();
 		void list_directory_contents();
 		void make_directory();
+		void remove_directory();
 		void quit();
 		string c_to_cpp_string(char *c_str);
 		string rstrip(string str);
+		void split_msg(string msg, string &s1, string &s2);
 
 	public:
 
