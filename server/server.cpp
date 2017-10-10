@@ -1,7 +1,7 @@
 // TCP Server Function Definition
 
-#include <cstdlib>
-#include <cstdio>
+#include <stdlib.h>
+#include <stdio.h>
 #include <dirent.h>
 #include <iostream>
 #include <string.h>
@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <string>
 
 #include "server.h"
 using namespace std;
@@ -131,7 +132,12 @@ void Server::list_directory_contents() {
 		perror("opendir() failed");
 		exit(1);
 	}
+	
+	//char len_str[];
+	//sprintf(len_str, "%lu", response.length());
+	//string resp_len = string(len_str);
 
+	send_data(to_string(response.length()));
 	send_data(response);
 }
 
