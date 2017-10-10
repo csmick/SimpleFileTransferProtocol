@@ -12,7 +12,9 @@ using namespace std;
 class Server {
 
 	private:
-
+		
+		char *in_buffer;
+		string in_buffer;
 		int connection_socket;
 		int data_socket;
 		struct sockaddr_in sin;
