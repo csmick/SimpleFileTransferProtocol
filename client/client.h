@@ -16,6 +16,8 @@ class Client {
 		struct sockaddr_in sin;
 		socklen_t client_addr_size;
 		std::string c_to_cpp_string(char* buf);
+		void split_msg(std::string msg, std::string &s1, std::string &s2);
+		std::string rstrip(std::string str);
 
 	public:
 
@@ -26,7 +28,7 @@ class Client {
 		
 		void open_socket();
 		void connect_socket();
-		void send_messages(std::string s);
+		void send_message(std::string s);
 		std::string receive_data();
 	
 		void download();

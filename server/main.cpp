@@ -30,9 +30,6 @@ int main(int argc, char **argv) {
 	while(1) {
 
 		command = server.receive_data();
-		
-		cout << "Command from main is: " << command << endl;
-		
 		server.parse_and_execute(command);
 
 	}

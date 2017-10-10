@@ -47,7 +47,7 @@ void Client::connect_socket() {
 	}
 };
 
-void Client::send_messages(string s) {
+void Client::send_message(string s) {
 	int len = s.length();
 	if(send(this->sockfd, s.c_str(), len, 0) == -1) {
 		fprintf(stderr, "tcp-client: send() failed");
@@ -59,6 +59,7 @@ void Client::send_messages(string s) {
 string Client::receive_data() {
 
 	char in_buffer[4096];
+	bzero(in_buffer, 4096);
 	if(read(this->sockfd, (void *) &in_buffer, 4096) == -1) {
 		perror("read() failed");
 		exit(1);
@@ -76,6 +77,7 @@ void Client::start() {
 	string command;
 	while(cin >> command) { // loop until the input is finished
 	
+		command = rstrip(command);
 		if(command == "QUIT") {
 			printf("Goodbye!\n");
 			break;
@@ -96,7 +98,6 @@ void Client::start() {
 		} else {
 			cout << "INVALID COMMAND\n\n";
 		}
-
 
 		cout << endl << endl;
 
@@ -128,12 +129,13 @@ void Client::download() {
 
 	string filename = "";
 	cin >> filename;
+	filename = rstrip(filename);
 	
 	// Send download request
 	string message = "DWLD";
-	this->send_messages(message);
+	this->send_message(message);
 	message = to_string(filename.length()) + " " + filename;
-	this->send_messages(message);
+	this->send_message(message);
 
 	// TODO: Receive file from server and save to disk
 
@@ -147,11 +149,12 @@ void Client::upload() {
 
 	string filename = "";
 	cin >> filename;
+	filename = rstrip(filename);
 
 	// Send the intent to upload	
-	this->send_messages("UPLD");
+	this->send_message("UPLD");
 	string message = to_string(filename.length()) + " " + filename;
-	this->send_messages(message);
+	this->send_message(message);
 
 	// TODO: Upload file to server
 
@@ -164,10 +167,11 @@ void Client::delete_file() {
 	cout << "--> ";
 	string filename = "";
 	cin >> filename;
+	filename = rstrip(filename);
 
 	// Send the intent to delete
-	this->send_messages("DELF");
-	this->send_messages(filename.length() + " " + filename);
+	this->send_message("DELF");
+	this->send_message(filename.length() + " " + filename);
 
 	// Acknowledgement from server
 	int ack = stoi(this->receive_data());
@@ -183,9 +187,10 @@ void Client::delete_file() {
 	
 		// Read in the user's answer
 		cin >> deleteConf;
+		deleteConf = rstrip(deleteConf);
 
 		if(deleteConf == "Yes" || deleteConf == "No") {
-			this->send_messages(deleteConf);
+			this->send_message(deleteConf);
 			break;
 		}
 	}
@@ -200,29 +205,110 @@ void Client::delete_file() {
 
 void Client::list() {
 
-	this->send_messages("LIST");
+	this->send_message("LIST");
+	
+	cout << "receiving list::msg" << endl;	
+	string msg = this->receive_data();
+	cout << "list::msg: <<" << msg << ">>" << endl;
 
-	string numBytesString = this->receive_data();
+	string numBytesString, listing_part;
+
+	this->split_msg(msg, numBytesString, listing_part);
+
+	cout << listing_part << endl;
+
 	int bytes = stoi(numBytesString);
 
 	// Loop until all bytes from the file listing are read
-	int i = 0;
+	int i = listing_part.length();
 	while(i < bytes) {
-		string listingPart = this->receive_data();
-		cout << listingPart;
-		i += listingPart.length();
+		cout << "receiving listing_part" << endl;	
+		listing_part = this->receive_data();
+		cout << listing_part;
+		i += listing_part.length();
 	}
 
 	cout << endl << endl;
 
 }
 
-void Client::make_dir() {}
-void Client::remove_dir() {}
+void Client::make_dir() {
+	
+	this->send_message("MDIR");
+	
+	// Prompt user for directory path
+	cout << "Please enter the path of the directory you would like to create:" << endl;
+	cout << "--> ";
+
+	string dir_name = "";
+	cin >> dir_name;
+	dir_name = rstrip(dir_name);
+
+	// Send the intent to upload	
+	string message = to_string(dir_name.length()) + " " + dir_name;
+	this->send_message(message);
+	
+	cout << "receiving res" << endl;	
+	string res = receive_data();
+	cout << "res: <<" << res << ">>" << endl;
+	if(res == "-2") {
+		cout << "The directory already exists on server" << endl;
+	} else if(res == "-1") {
+		cout << "Error in making directory" << endl;
+	} else if(res == "1"){
+		cout << "The directory was successfully made" << endl;
+	} else {
+		cout << "Error with MDIR" << endl;
+	}
+}
+
+void Client::remove_dir() {
+
+	// Prompt user for directory path
+	cout << "Please enter the path of the directory you would like to delete:" << endl;
+	cout << "--> ";
+
+	string dir_name = "";
+	cin >> dir_name;
+	dir_name = rstrip(dir_name);
+
+	// Send the intent to upload	
+	this->send_message("RDIR");
+	string message = to_string(dir_name.length()) + " " + dir_name;
+	this->send_message(message);
+	
+	cout << "receiving dir_exists" << endl;	
+	string dir_exists = receive_data();
+	cout << "dir_exists: <<" << dir_exists << ">>" << endl;
+	if(dir_exists == "-1") {
+		cout << "The directory does not exist on server" << endl;
+	} else {
+		string conf = "";
+		while(conf != "Yes" && conf != "No") {
+			cout << "Are you sure that you want to delete " << dir_name << "? (Yes/No) ";
+			cin >> conf;
+			conf = rstrip(conf);
+		}
+		this->send_message(conf);
+		if(conf == "Yes") {
+			cout << "receiving result dir_exists" << endl;	
+			string result = receive_data();
+			cout << "result: <<" << result << ">>" << endl;
+			if(result == "-1") {
+				cout << "Failed to delete directory" << endl;
+			} else if(result == "1"){
+				cout << "Directory deleted" << endl;
+			} else {
+				cout << "Error with RDIR" << endl;
+			}
+		}
+	}
+}
+
 void Client::change_dir() {}
 void Client::close_socket() {
 
-	this->send_messages("QUIT");
+	this->send_message("QUIT");
 	close(this->sockfd);
 
 }
@@ -241,3 +327,18 @@ string Client::c_to_cpp_string(char* buf) {
 	return str;
 
 }
+
+void Client::split_msg(string msg, string &s1, string &s2) {
+
+	string::size_type pos;
+	pos=msg.find(' ',0);
+	if(pos != string::npos) {
+		s1 = msg.substr(0,pos);
+		s2 = msg.substr(pos+1);
+	}
+}
+
+string Client::rstrip(string str) {
+	return str.substr(0, str.find_last_not_of(" \t\n") + 1);
+}
+

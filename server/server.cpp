@@ -92,15 +92,24 @@ string Server::receive_data() {
 }
 
 void Server::change_directory() {
+	
+	string msg = receive_data();
+	msg = rstrip(msg);
 
-	string size = receive_data();
-	string path = receive_data();
-	path = rstrip(path);
+	string size, path;
+	split_msg(msg, size, path);
 
-	if(chdir(path.c_str()) == -1) {
-		perror("chdir() failed");
-		exit(1);
+    struct stat sb;
+	if (stat(path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+		if(chdir(path.c_str()) == -1) {
+			send_data("-1");
+		} else {
+			send_data("1");
+		}
+	} else {
+		send_data("-2");
 	}
+
 }
 
 void Server::list_directory_contents() {
@@ -134,29 +143,58 @@ void Server::list_directory_contents() {
 		perror("opendir() failed");
 		exit(1);
 	}
-	
-	send_data(to_string(response.length()));
-	send_data(response);
+
+	this->send_data(to_string(response.length()) + " " + response);
 }
 
 void Server::make_directory() {
-	string size = receive_data();
-	string dir_path = receive_data();
-	
-	dir_path = rstrip(dir_path);
+	string msg = receive_data();
+	msg = rstrip(msg);
+
+	string size, dir_path;
+	this->split_msg(msg, size, dir_path);
 	
     struct stat sb;
 	if (stat(dir_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+		cout << "mdir sending -2" << endl;
 		send_data("-2");
 	} else {
-		if(mkdir(dir_path.c_str(), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) == -1) {
-			perror("mkdir() failed");
-			exit(1);
+		if(mkdir(dir_path.c_str(), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == -1) {
+			fprintf(stderr, "mkdir() failed");
+			cout << "mdir sending -1" << endl;
+			send_data("-1");
+		} else {
+			cout << "mdir sending 1" << endl;
+			send_data("1");
 		}
 	}
-
-
 }
+
+void Server::remove_directory() {
+	string msg = receive_data();
+	msg = rstrip(msg);
+
+	string size, dir_path;
+	this->split_msg(msg, size, dir_path);
+	
+    struct stat sb;
+	if (stat(dir_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+		send_data("1");
+	} else {
+		send_data("-1");
+		return;
+	}
+
+	string confirmation = receive_data();
+	if(confirmation == "Yes") {
+		if(rmdir(dir_path.c_str()) == -1) {
+			send_data("-1");
+		} else {
+			send_data("1");
+		}
+	}
+}
+
 
 void Server::quit() {
 
@@ -177,25 +215,26 @@ void Server::parse_and_execute(string command) {
 	}
 	else if(command.compare("LIST") == 0) {
 		printf("List initiated\n");
-		list_directory_contents();
+		this->list_directory_contents();
 	}
 	else if(command.compare("MDIR") == 0) {
-		make_directory();
 		printf("Make Directory initiated\n");
+		this->make_directory();
 	}
 	else if(command.compare("RDIR") == 0) {
 		printf("Remove Directory initiated\n");
+		this->remove_directory();
 	}
 	else if(command.compare("CDIR") == 0) {
 		printf("Change Directory initiated\n");
-		change_directory();
+		this->change_directory();
 	}
 	else if(command.compare("DELF") == 0) {
 		printf("Delete File initiated\n");
 	}
 	else if(command.compare("QUIT") == 0) {
 		printf("Quit initiated\n");
-		quit();
+		this->quit();
 	}
 	else {
 		cout << "Invalid command: " << command << endl;
@@ -215,4 +254,14 @@ string Server::c_to_cpp_string(char *c_str) {
 
 string Server::rstrip(string str) {
 	return str.substr(0, str.find_last_not_of(" \t\n") + 1);
+}
+
+void Server::split_msg(string msg, string &s1, string &s2) {
+
+	string::size_type pos;
+	pos=msg.find(' ',0);
+	if(pos != string::npos) {
+		s1 = msg.substr(0,pos);
+		s2 = msg.substr(pos+1);
+	}
 }
