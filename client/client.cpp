@@ -1,5 +1,6 @@
 // TCP Client Function Implementation
 
+#include <iostream>
 #include <stdio.h>	
 #include <stdlib.h>	
 #include <string.h>	
@@ -8,15 +9,13 @@
 #include <netinet/in.h>	
 #include <netdb.h>	
 #include <unistd.h>
+#include <string>
 
 #include "client.h"
 using namespace std;
 
 Client::Client(char *h, const int port, int buf_sz) {
 
-	// malloc for buf
-	this->buf = (char *) malloc(buf_sz);
-	this->buf_size = buf_sz;
 	// create the hostent structure
 	this->hp = gethostbyname(h);	
 	if(!this->hp) {	
@@ -48,45 +47,53 @@ void Client::connect_socket() {
 	}
 };
 
-void Client::send_messages(char *buf1, char *buf2) {
-	int len1 = strlen(buf1)+1, len2 = strlen(buf2)+1;
-	if(send(this->sockfd, buf1, len1, 0) == -1) {
+void Client::send_messages(string s) {
+	int len = s.length();
+	if(send(this->sockfd, s.c_str(), len, 0) == -1) {
 		fprintf(stderr, "tcp-client: send() failed");
+		close_socket();
 		exit(1);
-		close(this->sockfd);
-	}
-	if(send(this->sockfd, buf2, len2, 0) == -1) {
-		fprintf(stderr, "tcp-client: send() failed");
-		exit(1);
-		close(this->sockfd);
 	}
 };
+
+string Client::receive_data() {
+
+	char in_buffer[4096];
+	if(read(this->sockfd, (void *) &in_buffer, 4096) == -1) {
+		perror("read() failed");
+		exit(1);
+	}
+	return c_to_cpp_string(in_buffer);
+}
 
 void Client::start() {
 	
 	printf("Welcome to Simple FTP client\n");
 	this->print_usage();
 
-	while(fgets(this->buf, this->buf_size, stdin)) { // loop until the input is finished
+	cout << "> ";
+	string command;
+	while(cin >> command) { // loop until the input is finished
 	
-		buf[this->buf_size-1] = '\0';
-		if(!strncmp(buf, "QUIT", 4)) {
+		if(command == "QUIT") {
 			printf("Goodbye!");
 			break;
-		} else if(!strncmp(buf, "DWLD", 4)) {
+		} else if(command == "DWLD") {
 			this->download();
-		} else if(!strncmp(buf, "UPLD", 4)) {
+		} else if(command == "UPLD") {
 			this->upload();
-		} else if(!strncmp(buf, "DELF", 4)) {
+		} else if(command == "DELF") {
 			this->delete_file();
-		} else if(!strncmp(buf, "LIST", 4)) {
+		} else if(command == "LIST") {
 			this->list();
-		} else if(!strncmp(buf, "MDIR", 4)) {
+		} else if(command == "MDIR") {
 			this->make_dir();
-		} else if(!strncmp(buf, "RDIR", 4)) {
+		} else if(command == "RDIR") {
 			this->remove_dir();
-		} else if(!strncmp(buf, "CDIR", 4)) {
+		} else if(command == "CDIR") {
 			this->change_dir();
+		} else {
+			cout << "INVALID COMMAND\n\n";
 		}
 
 		this->print_usage();
@@ -106,19 +113,121 @@ void Client::print_usage() {
 }
 
 void Client::download() {
-	printf("Please enter the name of the file you would like to download: ");
-	fgets(this->buf, this->buf_size, stdin);
+
+	// Prompt user for filename
+	cout << "Please enter the name of the file you would like to download:" << endl;
+	cout << "--> ";
+
+	cout.flush();	
+
+	string filename;
+	cin >> filename;
 	
-	char *op = 0;
-	strncpy(op, "DWLD", 5);;
-	this->send_messages(op, buf);
+	// Send download request
+	this->send_messages("DWLD");
+	string message = filename.length() + " " + filename;
+	this->send_messages(message);
+
+	// TODO: Receive file from server and save to disk
 
 }
 
-void Client::upload() {}
-void Client::delete_file() {}
-void Client::list() {}
+void Client::upload() {
+
+	// Prompt user for filename
+	cout << "Please enter the name of the file you would like to upload:\n";
+	cout << "--> ";
+	string filename;
+	cin >> filename;
+
+	// Send the intent to upload	
+	this->send_messages("UPLD");
+	this->send_messages(filename.length() + " " + filename);
+
+	// TODO: Upload file to server
+
+}
+
+void Client::delete_file() {
+
+	// Prompt user for filename
+	cout << "Please enter the name of the file you would like to delete:\n";
+	cout << "--> ";
+	string filename;
+	cin >> filename;
+
+	// Send the intent to delete
+	this->send_messages("DELF");
+	this->send_messages(filename.length() + " " + filename);
+
+	// Acknowledgement from server
+	int ack = stoi(this->receive_data());
+
+	if(ack != 1) {
+		cout << "The file does not exist on server" << endl << endl;
+		return;
+	}
+
+	string deleteConf;
+	while(deleteConf != "Yes" && deleteConf != "No") {
+		cout << "Are you sure you want to delete " << filename << "? (Yes, No): ";
+	
+		// Read in the user's answer
+		cin >> deleteConf;
+
+		if(deleteConf == "Yes" || deleteConf == "No") {
+			this->send_messages(deleteConf);
+			break;
+		}
+	}
+
+	if(deleteConf == "Yes") {
+		
+	}
+	else {
+		cout << "Delete abandoned by user!" << endl << endl;
+	}
+}
+
+void Client::list() {
+
+	this->send_messages("LIST");
+
+	string numBytesString = this->receive_data();
+	int bytes = stoi(numBytesString);
+
+	// Loop until all bytes from the file listing are read
+	int i = 0;
+	while(i < bytes) {
+		string listingPart = this->receive_data();
+		cout << listingPart;
+		i += listingPart.length();
+	}
+
+	cout << endl << endl;
+
+}
+
 void Client::make_dir() {}
 void Client::remove_dir() {}
 void Client::change_dir() {}
-void Client::close_socket() {}
+void Client::close_socket() {
+
+	close(this->sockfd);
+
+}
+
+// Convert a c string into a cpp string and return the cpp string
+string Client::c_to_cpp_string(char* buf) {
+
+	string str;
+	if(buf == NULL) {
+		str = string("");
+	}
+	else {
+		str = string(buf);
+	}
+
+	return str;
+
+}

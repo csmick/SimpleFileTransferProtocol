@@ -2,6 +2,7 @@
 
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <string>
 
 class Client {
 
@@ -14,6 +15,7 @@ class Client {
 		struct hostent *hp;
 		struct sockaddr_in sin;
 		socklen_t client_addr_size;
+		std::string c_to_cpp_string(char* buf);
 
 	public:
 
@@ -24,8 +26,9 @@ class Client {
 		
 		void open_socket();
 		void connect_socket();
-		void send_messages(char *buf1, char *buf2);
-		
+		void send_messages(std::string s);
+		std::string receive_data();
+	
 		void download();
 		void upload();
 		void delete_file();
