@@ -97,10 +97,14 @@ void Client::start() {
 			cout << "INVALID COMMAND\n\n";
 		}
 
+
+		cout << endl << endl;
+
 		this->print_usage();
 
 		cout << endl << endl;	
 		cout << "> ";
+		command.clear();
 	}
 };
 
@@ -119,16 +123,16 @@ void Client::print_usage() {
 void Client::download() {
 
 	// Prompt user for filename
-	cout << "In Download Function" << endl;
 	cout << "Please enter the name of the file you would like to download:" << endl;
 	cout << "--> ";
 
-	string filename;
+	string filename = "";
 	cin >> filename;
 	
 	// Send download request
-	this->send_messages("DWLD");
-	string message = to_string(filename.length()) + " " + filename;
+	string message = "DWLD";
+	this->send_messages(message);
+	message = to_string(filename.length()) + " " + filename;
 	this->send_messages(message);
 
 	// TODO: Receive file from server and save to disk
@@ -138,11 +142,10 @@ void Client::download() {
 void Client::upload() {
 
 	// Prompt user for filename
-	cout << "In Upload function" << endl;
 	cout << "Please enter the name of the file you would like to upload:" << endl;
 	cout << "--> ";
 
-	string filename;
+	string filename = "";
 	cin >> filename;
 
 	// Send the intent to upload	
@@ -159,7 +162,7 @@ void Client::delete_file() {
 	// Prompt user for filename
 	cout << "Please enter the name of the file you would like to delete:" << endl;
 	cout << "--> ";
-	string filename;
+	string filename = "";
 	cin >> filename;
 
 	// Send the intent to delete
