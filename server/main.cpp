@@ -13,6 +13,10 @@ using namespace std;
 
 int main(int argc, char **argv) {
 
+	if(argc != 2) {
+		cout << "usage: myftpd PORT" << endl;
+		exit(1);
+	}
 	char *port = argv[1];
 
 	string command;

@@ -12,7 +12,9 @@ using namespace std;
 class Server {
 
 	private:
-
+		
+		char *in_buffer;
+		string in_buffer;
 		int connection_socket;
 		int data_socket;
 		struct sockaddr_in sin;
@@ -20,6 +22,7 @@ class Server {
 		socklen_t client_addr_size;
 		void change_directory();
 		void list_directory_contents();
+		void make_directory();
 		void quit();
 		string c_to_cpp_string(char *c_str);
 		string rstrip(string str);
