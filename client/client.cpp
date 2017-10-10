@@ -71,12 +71,13 @@ void Client::start() {
 	printf("Welcome to Simple FTP client\n");
 	this->print_usage();
 
+	cout << endl << endl;
 	cout << "> ";
 	string command;
 	while(cin >> command) { // loop until the input is finished
 	
 		if(command == "QUIT") {
-			printf("Goodbye!");
+			printf("Goodbye!\n");
 			break;
 		} else if(command == "DWLD") {
 			this->download();
@@ -97,6 +98,9 @@ void Client::start() {
 		}
 
 		this->print_usage();
+
+		cout << endl << endl;	
+		cout << "> ";
 	}
 };
 
@@ -115,17 +119,16 @@ void Client::print_usage() {
 void Client::download() {
 
 	// Prompt user for filename
+	cout << "In Download Function" << endl;
 	cout << "Please enter the name of the file you would like to download:" << endl;
 	cout << "--> ";
-
-	cout.flush();	
 
 	string filename;
 	cin >> filename;
 	
 	// Send download request
 	this->send_messages("DWLD");
-	string message = filename.length() + " " + filename;
+	string message = to_string(filename.length()) + " " + filename;
 	this->send_messages(message);
 
 	// TODO: Receive file from server and save to disk
@@ -135,14 +138,17 @@ void Client::download() {
 void Client::upload() {
 
 	// Prompt user for filename
-	cout << "Please enter the name of the file you would like to upload:\n";
+	cout << "In Upload function" << endl;
+	cout << "Please enter the name of the file you would like to upload:" << endl;
 	cout << "--> ";
+
 	string filename;
 	cin >> filename;
 
 	// Send the intent to upload	
 	this->send_messages("UPLD");
-	this->send_messages(filename.length() + " " + filename);
+	string message = to_string(filename.length()) + " " + filename;
+	this->send_messages(message);
 
 	// TODO: Upload file to server
 
@@ -151,7 +157,7 @@ void Client::upload() {
 void Client::delete_file() {
 
 	// Prompt user for filename
-	cout << "Please enter the name of the file you would like to delete:\n";
+	cout << "Please enter the name of the file you would like to delete:" << endl;
 	cout << "--> ";
 	string filename;
 	cin >> filename;
@@ -213,6 +219,7 @@ void Client::remove_dir() {}
 void Client::change_dir() {}
 void Client::close_socket() {
 
+	this->send_messages("QUIT");
 	close(this->sockfd);
 
 }
