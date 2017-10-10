@@ -196,7 +196,7 @@ void Client::delete_file() {
 	}
 
 	if(deleteConf == "Yes") {
-		
+		// TODO: receive confirmation message		
 	}
 	else {
 		cout << "Delete abandoned by user!" << endl << endl;
@@ -305,7 +305,35 @@ void Client::remove_dir() {
 	}
 }
 
-void Client::change_dir() {}
+void Client::change_dir() {
+
+	this->send_message("CDIR");
+
+	// Prompt user for filename
+	cout << "Please enter the name of the directory to which you would like to change:" << endl;
+	cout << "--> ";
+
+	string dir = "";
+	cin >> dir;
+
+	// Send the directory
+	this->send_message(to_string(dir.length()) + " " + dir);
+
+	// Retrieve the status
+	int status = stoi(this->receive_data());
+
+	if(status == -2) {
+		cout << "The directory does not exist on server" << endl;
+	}
+	else if (status == -1) {
+		cout << "Error in changing directory" << endl;
+	}
+	else {
+		cout << "Changed current directory" << endl;
+	}
+
+	
+}
 void Client::close_socket() {
 
 	this->send_message("QUIT");
