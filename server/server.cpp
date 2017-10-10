@@ -82,6 +82,8 @@ void Server::send_data(string buffer) {
 string Server::receive_data() {
 
 	char in_buffer[4096];
+	bzero(in_buffer, 4096);
+
 	if(read(data_socket, (void *) &in_buffer, 4096) == -1) {
 		perror("read() failed");
 		exit(1);
@@ -133,12 +135,16 @@ void Server::list_directory_contents() {
 		exit(1);
 	}
 	
-	//char len_str[];
-	//sprintf(len_str, "%lu", response.length());
-	//string resp_len = string(len_str);
-
 	send_data(to_string(response.length()));
 	send_data(response);
+}
+
+void Server::make_directory() {
+	string size = receive_data();
+	string dir_name = receive_data();
+	
+	dir_name = rstrip(dir_name);
+
 }
 
 void Server::quit() {
@@ -163,6 +169,7 @@ void Server::parse_and_execute(string command) {
 		list_directory_contents();
 	}
 	else if(command.compare("MDIR") == 0) {
+		make_directory();
 		printf("Make Directory initiated\n");
 	}
 	else if(command.compare("RDIR") == 0) {
