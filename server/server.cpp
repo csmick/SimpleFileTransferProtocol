@@ -2,8 +2,13 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <dirent.h>
+#include <iostream>
+#include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include "server.h"
 using namespace std;
@@ -18,7 +23,7 @@ Server::Server(char *port) {
 	client_addr_size = sizeof(client_addr);
 }
 
-Server::Server(const int port = 8000) {
+Server::Server(const int port) {
 
 	// create server address struct
 	bzero((char *) &sin, sizeof(struct sockaddr_in));
@@ -28,42 +33,148 @@ Server::Server(const int port = 8000) {
 	client_addr_size = sizeof(client_addr);
 }
 
-int Server::open_socket() {
+void Server::open_socket() {
 	
-	int sockfd;
-	if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+	if((connection_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 		perror("socket() failed");
 		exit(1);
 	}
-	return sockfd;
 };
 
-void Server::bind_socket(const int sockfd) {
+void Server::bind_socket() {
 
 	// allow for port reuse
 	int opt = 0;
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *) &opt, sizeof(int));
+	setsockopt(connection_socket, SOL_SOCKET, SO_REUSEADDR, (char *) &opt, sizeof(int));
 
 	// bind socket
-	if((bind(sockfd, (struct sockaddr *) &sin, sizeof(sin))) < 0) {
+	if((bind(connection_socket, (struct sockaddr *) &sin, sizeof(sin))) < 0) {
 		perror("bind() failed");
 		exit(1);
 	}
 };
 
-void Server::listen_socket(const int sockfd) {
+void Server::listen_socket() {
 	
-	if(listen(sockfd, 1) == -1) {
+	if(listen(connection_socket, 1) == -1) {
 		perror("listen() failed");
 		exit(1);
 	}
 }
 
-int Server::accept_connection(const int sockfd) {
-	int new_fd;
-	if((new_fd = accept(sockfd, (struct sockaddr *) &client_addr, &client_addr_size)) == -1) {
+void Server::accept_connection() {
+
+	if((data_socket = accept(connection_socket, (struct sockaddr *) &client_addr, &client_addr_size)) == -1) {
 		perror("accept() failed");
 		exit(1);
 	}
-	return new_fd;
+}
+
+void Server::send_data(string buffer) {
+
+	if(write(data_socket, buffer.c_str(), 4096) == -1) {
+		perror("write() failed");
+		exit(1);
+	}
+}
+
+string Server::receive_data() {
+
+	char in_buffer[4096];
+	if(read(data_socket, (void *) &in_buffer, 4096) == -1) {
+		perror("read() failed");
+		exit(1);
+	}
+	return c_to_cpp_string(in_buffer);
+}
+
+void Server::change_directory() {
+
+	string path = receive_data();
+	if(chdir(path.c_str()) == -1) {
+		perror("chdir() failed");
+		exit(1);
+	}
+}
+
+void Server::list_directory_contents() {
+
+	DIR *d;
+	struct dirent *dir;
+	struct stat file_stats;
+	string response("");
+
+	d = opendir(".");
+
+	if(d) {
+		while((dir = readdir(d)) != 0) {
+			if(stat(dir->d_name, &file_stats) == 0) {
+				response += ((S_ISDIR(file_stats.st_mode)) ? 'd' : '-');
+				response += ((file_stats.st_mode & S_IRUSR) ? 'r' : '-');
+				response += ((file_stats.st_mode & S_IWUSR) ? 'w' : '-');
+				response += ((file_stats.st_mode & S_IXUSR) ? 'x' : '-');
+				response += ((file_stats.st_mode & S_IRGRP) ? 'r' : '-');
+				response += ((file_stats.st_mode & S_IWGRP) ? 'w' : '-');
+				response += ((file_stats.st_mode & S_IXGRP) ? 'x' : '-');
+				response += ((file_stats.st_mode & S_IROTH) ? 'r' : '-');
+				response += ((file_stats.st_mode & S_IWOTH) ? 'w' : '-');
+				response += ((file_stats.st_mode & S_IXOTH) ? 'x' : '-');
+				response += (" " + c_to_cpp_string(dir->d_name) + "\n");
+			}
+		}
+		closedir(d);
+	}
+	else {
+		perror("opendir() failed");
+		exit(1);
+	}
+
+	send_data(response);
+}
+
+void Server::parse_and_execute(string command) {
+
+	// trim trailing whitespace
+	command = command.substr(0, command.find_last_not_of(" \t\n") + 1);
+
+	if(command.compare("DWLD") == 0) {
+		printf("Download initiated\n");
+	}
+	else if(command.compare("UPLD") == 0) {
+		printf("Upload initiated\n");
+	}
+	else if(command.compare("LIST") == 0) {
+		printf("List initiated\n");
+		list_directory_contents();
+	}
+	else if(command.compare("MDIR") == 0) {
+		printf("Make Directory initiated\n");
+	}
+	else if(command.compare("RDIR") == 0) {
+		printf("Remove Directory initiated\n");
+	}
+	else if(command.compare("CDIR") == 0) {
+		printf("Change Directory initiated\n");
+		change_directory();
+	}
+	else if(command.compare("DELF") == 0) {
+		printf("Delete File initiated\n");
+	}
+	else if(command.compare("QUIT") == 0) {
+		printf("Quit initiated\n");
+	}
+	else {
+		cout << "Invalid command: " << command << endl;
+	}
+}
+
+string Server::c_to_cpp_string(char *c_str) {
+	string str;
+	if(c_str == NULL) {
+		str = string("");
+	}
+	else {
+		str = string(c_str);
+	}
+	return str;
 }

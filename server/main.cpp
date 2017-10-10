@@ -1,24 +1,32 @@
 // TCP Server
 
 #include <cstdlib>
+#include <iostream>
 #include <unistd.h>
 
 #include "server.h"
 using namespace std;
 
+#define BUF_SIZE 4096
+
+using namespace std;
+
 int main(int argc, char **argv) {
 
-	char* port = argv[1];
+	char *port = argv[1];
 
-	int sockfd;
+	string command;
 
 	Server server(port);
-	sockfd = server.open_socket();
-	server.bind_socket(sockfd);
-	server.listen_socket(sockfd);
-	s = server.accept_connection(sockfd);
+	server.open_socket();
+	server.bind_socket();
+	server.listen_socket();
+	server.accept_connection();
 
-	close(sockfd);
+	while(1) {
 
-	return 0;
+		command = server.receive_data();
+		server.parse_and_execute(command);
+
+	}
 }
