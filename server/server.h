@@ -22,6 +22,7 @@ class Server {
 		void list_directory_contents();
 		void make_directory();
 		void remove_directory();
+		void delete_file();
 		void quit();
 		string c_to_cpp_string(char *c_str);
 		string rstrip(string str);
