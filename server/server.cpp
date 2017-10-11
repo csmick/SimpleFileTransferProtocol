@@ -88,7 +88,7 @@ string Server::receive_data() {
 		perror("read() failed");
 		exit(1);
 	}
-	return c_to_cpp_string(in_buffer);
+	return rstrip(c_to_cpp_string(in_buffer));
 }
 
 void Server::change_directory() {
@@ -143,28 +143,28 @@ void Server::list_directory_contents() {
 		perror("opendir() failed");
 		exit(1);
 	}
+	
+	response = rstrip(response);
 
 	this->send_data(to_string(response.length()) + " " + response);
 }
 
 void Server::make_directory() {
 	string msg = receive_data();
-	msg = rstrip(msg);
 
 	string size, dir_path;
 	this->split_msg(msg, size, dir_path);
-	
+	size = rstrip(size);
+	dir_path = rstrip(dir_path);
+
     struct stat sb;
 	if (stat(dir_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
-		cout << "mdir sending -2" << endl;
 		send_data("-2");
 	} else {
 		if(mkdir(dir_path.c_str(), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == -1) {
 			fprintf(stderr, "mkdir() failed");
-			cout << "mdir sending -1" << endl;
 			send_data("-1");
 		} else {
-			cout << "mdir sending 1" << endl;
 			send_data("1");
 		}
 	}
@@ -231,6 +231,7 @@ void Server::parse_and_execute(string command) {
 	}
 	else if(command.compare("DELF") == 0) {
 		printf("Delete File initiated\n");
+		this->delete_file();
 	}
 	else if(command.compare("QUIT") == 0) {
 		printf("Quit initiated\n");
@@ -238,6 +239,31 @@ void Server::parse_and_execute(string command) {
 	}
 	else {
 		cout << "Invalid command: " << command << endl;
+	}
+}
+
+void Server::delete_file() {
+	string msg = receive_data();
+	msg = rstrip(msg);
+
+	string size, file_path;
+	this->split_msg(msg, size, file_path);
+	
+    struct stat sb;
+	if (stat(file_path.c_str(), &sb) == 0 && S_ISREG(sb.st_mode)) {
+		send_data("1");
+	} else {
+		send_data("-1");
+		return;
+	}
+
+	string confirmation = receive_data();
+	if(confirmation == "Yes") {
+		if(unlink(file_path.c_str()) == -1) {
+			send_data("-1");
+		} else {
+			send_data("1");
+		}
 	}
 }
 
@@ -251,6 +277,7 @@ string Server::c_to_cpp_string(char *c_str) {
 	}
 	return str;
 }
+
 
 string Server::rstrip(string str) {
 	return str.substr(0, str.find_last_not_of(" \t\n") + 1);
