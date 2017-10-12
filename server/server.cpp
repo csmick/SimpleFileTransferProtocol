@@ -130,6 +130,36 @@ void Server::download_file() {
 
 void Server::upload_file() {
 
+	string msg = receive_data();
+	msg = rstrip(msg);
+
+	string size, filename;
+	split_msg(msg, size, filename);
+	
+	send_data("1");
+
+	// Receive file size
+	int fileSize = stoi(this->receive_data());
+
+	// Open file to be written
+	FILE* receivedFile = fopen(filename.c_str(), "w");
+	if (receivedFile == NULL) {
+		cout << "Failed to open file: " <<  strerror(errno) << endl;
+		return;
+	}
+
+	// Receive file and write to disk (obtained help from StackOverflow post titled "c send and receive file")
+	int remainingData = fileSize;
+	int len;
+	char buffer[4096];
+	
+	while((remainingData > 0) && ((len = recv(data_socket, buffer, 4096, 0)) > 0)) {
+		fwrite(buffer, sizeof(char), len, receivedFile);
+		remainingData -= len;
+	}
+
+	fclose(receivedFile);
+
 }
 
 void Server::change_directory() {

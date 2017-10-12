@@ -147,7 +147,6 @@ void Client::download() {
 		cout << "File \"" << filename << "\" does not exist on server" << endl;
 		return;
 	}
-	cout << "FILESIZE: " << fileSize << endl;
 	
 	// Open file to be written
 	FILE* receivedFile = fopen(filename.c_str(), "w");
