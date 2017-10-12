@@ -208,33 +208,27 @@ void Server::parse_and_execute(string command) {
 	command = rstrip(command);
 
 	if(command.compare("DWLD") == 0) {
-		printf("Download initiated\n");
+	
 	}
 	else if(command.compare("UPLD") == 0) {
-		printf("Upload initiated\n");
+	
 	}
 	else if(command.compare("LIST") == 0) {
-		printf("List initiated\n");
 		this->list_directory_contents();
 	}
 	else if(command.compare("MDIR") == 0) {
-		printf("Make Directory initiated\n");
 		this->make_directory();
 	}
 	else if(command.compare("RDIR") == 0) {
-		printf("Remove Directory initiated\n");
 		this->remove_directory();
 	}
 	else if(command.compare("CDIR") == 0) {
-		printf("Change Directory initiated\n");
 		this->change_directory();
 	}
 	else if(command.compare("DELF") == 0) {
-		printf("Delete File initiated\n");
 		this->delete_file();
 	}
 	else if(command.compare("QUIT") == 0) {
-		printf("Quit initiated\n");
 		this->quit();
 	}
 	else {
