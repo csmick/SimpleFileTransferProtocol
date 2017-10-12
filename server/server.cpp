@@ -1,15 +1,17 @@
 // TCP Server Function Definition
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <iostream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string>
 #include <string.h>
 #include <strings.h>
+#include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <string>
 
 #include "server.h"
 using namespace std;
@@ -73,7 +75,8 @@ void Server::accept_connection() {
 
 void Server::send_data(string buffer) {
 
-	if(write(data_socket, buffer.c_str(), 4096) == -1) {
+	int len = buffer.length();
+	if(write(data_socket, buffer.c_str(), len) == -1) {
 		perror("write() failed");
 		exit(1);
 	}
@@ -91,6 +94,44 @@ string Server::receive_data() {
 	return rstrip(c_to_cpp_string(in_buffer));
 }
 
+// obtained help from https://stackoverflow.com/questions/11952898/c-send-and-receive-file
+void Server::download_file() {
+
+	string msg = receive_data();
+	msg = rstrip(msg);
+
+	string size, filename;
+	split_msg(msg, size, filename);
+
+	if(access(filename.c_str(), F_OK) == -1) {
+		send_data("-1");
+		return;
+	}
+	
+	struct stat st;
+	int file_size;
+
+    if(stat(filename.c_str(), &st) == 0) {
+		file_size = st.st_size;
+		send_data(to_string(file_size));
+	}
+	else {
+		perror("stat() failed");
+		exit(1);
+	}
+
+	off_t offset = 0;
+	int sent_bytes, remaining_data = file_size;
+	int fd = open(filename.c_str(), O_RDONLY);
+	while(((sent_bytes = sendfile(data_socket, fd, &offset, 4096)) > 0) && (remaining_data > 0)) {
+		remaining_data -= sent_bytes;
+	}
+}
+
+void Server::upload_file() {
+
+}
+
 void Server::change_directory() {
 	
 	string msg = receive_data();
@@ -99,8 +140,9 @@ void Server::change_directory() {
 	string size, path;
 	split_msg(msg, size, path);
 
-    struct stat sb;
-	if (stat(path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+	struct stat sb; 
+   
+	if(stat(path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
 		if(chdir(path.c_str()) == -1) {
 			send_data("-1");
 		} else {
@@ -208,10 +250,10 @@ void Server::parse_and_execute(string command) {
 	command = rstrip(command);
 
 	if(command.compare("DWLD") == 0) {
-	
+		download_file();
 	}
 	else if(command.compare("UPLD") == 0) {
-	
+		upload_file();
 	}
 	else if(command.compare("LIST") == 0) {
 		this->list_directory_contents();

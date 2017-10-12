@@ -18,6 +18,8 @@ class Server {
 		struct sockaddr_in sin;
 		struct sockaddr_in client_addr;
 		socklen_t client_addr_size;
+		void download_file();
+		void upload_file();
 		void change_directory();
 		void list_directory_contents();
 		void make_directory();

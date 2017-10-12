@@ -10,6 +10,9 @@
 #include <netdb.h>	
 #include <unistd.h>
 #include <string>
+#include <sys/sendfile.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #include "client.h"
 using namespace std;
@@ -148,24 +151,22 @@ void Client::download() {
 	
 	// Open file to be written
 	FILE* receivedFile = fopen(filename.c_str(), "w");
-        if (receivedFile == NULL)
-        {
-                cout << "Failed to open file: " <<  strerror(errno) << endl;
+	if (receivedFile == NULL) {
+		cout << "Failed to open file: " <<  strerror(errno) << endl;
 		return;
-        }
+	}
 
 	// Receive file and write to disk (obtained help from StackOverflow post titled "c send and receive file")
 	int remainingData = fileSize;
 	int len;
 	char buffer[4096];
-        while (((len = recv(this->sockfd, buffer, 4096, 0)) > 0) && (remainingData > 0))
-        {
-                fwrite(buffer, sizeof(char), len, receivedFile);
-                remainingData -= len;
-        }
+	
+	while((remainingData > 0) && ((len = recv(this->sockfd, buffer, 4096, 0)) > 0)) {
+		fwrite(buffer, sizeof(char), len, receivedFile);
+		remainingData -= len;
+	}
 
-        fclose(receivedFile);
-
+	fclose(receivedFile);
 }
 
 void Client::upload() {
@@ -183,8 +184,31 @@ void Client::upload() {
 	string message = to_string(filename.length()) + " " + filename;
 	this->send_message(message);
 
-	// TODO: Upload file to server
+	// Receive acknowledgement from server
+	string ack = "";
+	while(ack == "") {
+		ack = this->receive_data();
+	}
 
+	// Upload file to server
+	struct stat st;
+	int file_size;
+	
+	if(stat(filename.c_str(), &st) == 0) {
+		file_size = st.st_size;
+		send_message(to_string(file_size));
+	}
+	else {
+		perror("stat() failed");
+		exit(1);
+	}
+
+	off_t offset = 0;
+	int sent_bytes, remaining_data = file_size;
+	int fd = open(filename.c_str(), O_RDONLY);
+	while(((sent_bytes = sendfile(sockfd, fd, &offset, 4096)) > 0) && (remaining_data > 0)) {
+		remaining_data -= sent_bytes;
+	}
 }
 
 void Client::delete_file() {
