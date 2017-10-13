@@ -1,4 +1,7 @@
 // TCP Client Function Implementation
+// Ryan Smick
+// Connor Higgins
+// Cameron Smick
 
 #include <iostream>
 #include <stdio.h>	

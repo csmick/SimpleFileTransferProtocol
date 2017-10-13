@@ -1,4 +1,7 @@
 // TCP Server Function Definition
+// Ryan Smick
+// Cameron Smick
+// Connor Higgins
 
 #include <dirent.h>
 #include <fcntl.h>
