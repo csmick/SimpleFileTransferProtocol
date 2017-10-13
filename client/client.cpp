@@ -13,6 +13,7 @@
 #include <sys/sendfile.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include "client.h"
 using namespace std;
@@ -159,13 +160,16 @@ void Client::download() {
 	int remainingData = fileSize;
 	int len;
 	char buffer[4096];
+	struct timeval start, end;
 	
+	gettimeofday(&start, NULL);
 	while((remainingData > 0) && ((len = recv(this->sockfd, buffer, 4096, 0)) > 0)) {
 		fwrite(buffer, sizeof(char), len, receivedFile);
 		remainingData -= len;
 	}
-
+	gettimeofday(&end, NULL);
 	fclose(receivedFile);
+	cout << "Throughput = " << to_string(calculate_throughput(fileSize, start, end)) << "Mbps" << endl;
 }
 
 void Client::upload() {
@@ -208,6 +212,9 @@ void Client::upload() {
 	while(((sent_bytes = sendfile(sockfd, fd, &offset, 4096)) > 0) && (remaining_data > 0)) {
 		remaining_data -= sent_bytes;
 	}
+
+	string throughput = receive_data();
+	cout << "Throughput = " << throughput << "Mbps" << endl;
 }
 
 void Client::delete_file() {
@@ -280,21 +287,16 @@ void Client::list() {
 	cout << listing_part << endl;
 
 	int bytes = stoi(numBytesString);
+	cout << "BYTES = " << bytes << endl;
 
 	// Loop until all bytes from the file listing are read
-	int i = listing_part.length();
+	int bytes_received = listing_part.length();
 	
-	cout << "bytes = " << bytes << ", and i = " << i << endl;
-	
-	while(i < bytes) {
-		cout << "receiving listing_part" << endl;	
+	while(bytes_received < bytes) {
+		cout << "BYTES_RECEIVED = " << bytes << endl;
 		listing_part = this->receive_data();
-		string listing_part = "";
-		while(listing_part == "") {
-			listing_part = this->receive_data();
-		}
 		cout << listing_part;
-		i += listing_part.length();
+		bytes_received += listing_part.length();
 	}
 
 	cout << endl << endl;
@@ -413,6 +415,11 @@ void Client::close_socket() {
 	this->send_message("QUIT");
 	close(this->sockfd);
 
+}
+
+int Client::calculate_throughput(int size, struct timeval start, struct timeval end) {
+
+	return 8*size/(((end.tv_sec * 1000000) + end.tv_usec) - ((start.tv_sec * 1000000) + start.tv_usec));
 }
 
 // Convert a c string into a cpp string and return the cpp string

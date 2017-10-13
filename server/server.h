@@ -26,6 +26,7 @@ class Server {
 		void remove_directory();
 		void delete_file();
 		void quit();
+		int calculate_throughput(int size, struct timeval start, struct timeval end);
 		string c_to_cpp_string(char *c_str);
 		string rstrip(string str);
 		void split_msg(string msg, string &s1, string &s2);

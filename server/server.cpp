@@ -10,6 +10,7 @@
 #include <strings.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -152,11 +153,17 @@ void Server::upload_file() {
 	int remainingData = fileSize;
 	int len;
 	char buffer[4096];
-	
+	struct timeval start, end;
+
+	gettimeofday(&start, NULL);
 	while((remainingData > 0) && ((len = recv(data_socket, buffer, 4096, 0)) > 0)) {
 		fwrite(buffer, sizeof(char), len, receivedFile);
 		remainingData -= len;
 	}
+	gettimeofday(&end, NULL);
+	int throughput = calculate_throughput(fileSize, start, end);
+
+	send_data(to_string(throughput));
 
 	fclose(receivedFile);
 
@@ -331,6 +338,11 @@ void Server::delete_file() {
 			send_data("1");
 		}
 	}
+}
+
+int Server::calculate_throughput(int size, struct timeval start, struct timeval end) {
+
+	return 8*size/(((end.tv_sec * 1000000) + end.tv_usec) - ((start.tv_sec * 1000000) + start.tv_usec));
 }
 
 string Server::c_to_cpp_string(char *c_str) {

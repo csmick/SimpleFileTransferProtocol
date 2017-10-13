@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <string>
+using namespace std;
 
 class Client {
 
@@ -15,9 +16,10 @@ class Client {
 		struct hostent *hp;
 		struct sockaddr_in sin;
 		socklen_t client_addr_size;
-		std::string c_to_cpp_string(char* buf);
-		void split_msg(std::string msg, std::string &s1, std::string &s2);
-		std::string rstrip(std::string str);
+		int calculate_throughput(int size, struct timeval start, struct timeval end);
+		string c_to_cpp_string(char* buf);
+		void split_msg(string msg, string &s1, string &s2);
+		string rstrip(string str);
 
 	public:
 
@@ -28,8 +30,8 @@ class Client {
 		
 		void open_socket();
 		void connect_socket();
-		void send_message(std::string s);
-		std::string receive_data();
+		void send_message(string s);
+		string receive_data();
 	
 		void download();
 		void upload();
