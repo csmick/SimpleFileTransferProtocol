@@ -33,14 +33,16 @@ class Server {
 
 	public:
 
-		Server(char *port);
-		Server(const int port);
+		char *in_buffer;	
+		int in_buf_sz;
+		Server(char *port, int buf_sz);
+		Server(const int port, int buf_sz);
 		void open_socket();
 		void bind_socket();
 		void listen_socket();
 		void accept_connection();
-		void send_data(string buffer);
-		string receive_data();
+		void send_data(const char *buffer);
+		void receive_data(char *buffer);
 		void parse_and_execute(string command);
 
 };

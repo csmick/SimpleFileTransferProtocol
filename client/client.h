@@ -30,8 +30,8 @@ class Client {
 		
 		void open_socket();
 		void connect_socket();
-		void send_message(string s);
-		string receive_data();
+		void send_message(const char *buf);
+		void receive_data(char *buf);
 	
 		void download();
 		void upload();

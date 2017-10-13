@@ -14,11 +14,15 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <errno.h>
 
 #include "client.h"
 using namespace std;
 
-Client::Client(char *h, const int port, int buf_sz) {
+Client::Client(char *h, const int port, int buf_sz = 4096) {
+	
+	this->buf_size = buf_sz;
+	this->buf = (char*)malloc(this->buf_size);
 
 	// create the hostent structure
 	this->hp = gethostbyname(h);	
@@ -51,24 +55,23 @@ void Client::connect_socket() {
 	}
 };
 
-void Client::send_message(string s) {
-	int len = s.length();
-	if(send(this->sockfd, s.c_str(), len, 0) == -1) {
+void Client::send_message(const char *buffer) {
+	int len = strlen(buffer);
+	if(send(this->sockfd, buffer, len, 0) == -1) {
 		fprintf(stderr, "tcp-client: send() failed");
 		close_socket();
 		exit(1);
 	}
 };
 
-string Client::receive_data() {
+void Client::receive_data(char *buffer) {
 
-	char in_buffer[4096];
-	bzero(in_buffer, 4096);
-	if(read(this->sockfd, (void *) &in_buffer, 4096) == -1) {
+	int len = strlen(buffer);
+	bzero(buffer, len);
+	if(read(this->sockfd, (void *) &buffer, 4096) == -1) {
 		perror("read() failed");
 		exit(1);
 	}
-	return rstrip(c_to_cpp_string(in_buffer));
 }
 
 void Client::start() {
@@ -127,6 +130,10 @@ void Client::print_usage() {
 
 void Client::download() {
 
+	// Send download request
+	string message = "DWLD";
+	this->send_message(message.c_str());
+	
 	// Prompt user for filename
 	cout << "Please enter the name of the file you would like to download:" << endl;
 	cout << "--> ";
@@ -135,16 +142,24 @@ void Client::download() {
 	cin >> filename;
 	filename = rstrip(filename);
 	
-	// Send download request
-	string message = "DWLD";
-	this->send_message(message);
-	message = to_string(filename.length()) + " " + filename;
-	this->send_message(message);
+	int16_t file_name_len = ntohs(filename.length());
+	char *name_len = (char*) &file_name_len;
+	send_message(name_len);
+
+	string ack = "";
+	while(ack == "") {
+		receive_data(this->buf);
+		ack = rstrip(string(buf));
+	}
+	this->send_message(filename.c_str());
 
 	// Receive file size
-	int fileSize = stoi(this->receive_data());
+	int32_t file_size;
+	char *fs = (char*)&file_size;
+	this->receive_data(fs);
+	file_size = htonl(file_size);
 
-	if(fileSize < 0) {
+	if(file_size < 0) {
 		cout << "File \"" << filename << "\" does not exist on server" << endl;
 		return;
 	}
@@ -157,22 +172,26 @@ void Client::download() {
 	}
 
 	// Receive file and write to disk (obtained help from StackOverflow post titled "c send and receive file")
-	int remainingData = fileSize;
+	int remaining_data = file_size;
 	int len;
 	char buffer[4096];
 	struct timeval start, end;
 	
 	gettimeofday(&start, NULL);
-	while((remainingData > 0) && ((len = recv(this->sockfd, buffer, 4096, 0)) > 0)) {
+	while((remaining_data > 0) && ((len = recv(this->sockfd, buffer, 4096, 0)) > 0)) {
 		fwrite(buffer, sizeof(char), len, receivedFile);
-		remainingData -= len;
+		remaining_data -= len;
 	}
 	gettimeofday(&end, NULL);
 	fclose(receivedFile);
-	cout << "Throughput = " << to_string(calculate_throughput(fileSize, start, end)) << "Mbps" << endl;
+	cout << "Throughput = " << to_string(calculate_throughput(file_size, start, end)) << "Mbps" << endl;
 }
 
 void Client::upload() {
+	
+	// Send the intent to upload	
+	string message = "UPLD";
+	this->send_message(message.c_str());
 
 	// Prompt user for filename
 	cout << "Please enter the name of the file you would like to upload:" << endl;
@@ -181,25 +200,33 @@ void Client::upload() {
 	string filename = "";
 	cin >> filename;
 	filename = rstrip(filename);
+	
+	int16_t file_name_len = ntohs(filename.length());
+	char *name_len = (char*) &file_name_len;
+	send_message(name_len);
 
-	// Send the intent to upload	
-	this->send_message("UPLD");
-	string message = to_string(filename.length()) + " " + filename;
-	this->send_message(message);
-
-	// Receive acknowledgement from server
 	string ack = "";
 	while(ack == "") {
-		ack = this->receive_data();
+		receive_data(this->buf);
+		ack = rstrip(string(buf));
+	}
+	this->send_message(filename.c_str());
+
+	// Receive acknowledgement from server
+	ack = "";
+	while(ack == "") {
+		receive_data(this->buf);
+		ack = rstrip(string(buf));
 	}
 
 	// Upload file to server
 	struct stat st;
-	int file_size;
+	int32_t file_size;
+	char *fs = (char*)&file_size;
 	
 	if(stat(filename.c_str(), &st) == 0) {
 		file_size = st.st_size;
-		send_message(to_string(file_size));
+		send_message(fs);
 	}
 	else {
 		perror("stat() failed");
@@ -213,7 +240,8 @@ void Client::upload() {
 		remaining_data -= sent_bytes;
 	}
 
-	string throughput = receive_data();
+	receive_data(buf);
+	string throughput = rstrip(string(buf));
 	cout << "Throughput = " << throughput << "Mbps" << endl;
 }
 
@@ -228,17 +256,27 @@ void Client::delete_file() {
 	string filename = "";
 	cin >> filename;
 	filename = rstrip(filename);
-	
-	// send the length and file to delete
-	this->send_message(to_string(filename.length()) + " " + filename);
 
-	// Acknowledgement from server
+	int16_t file_name_len = ntohs(filename.length());
+	char *name_len = (char*) &file_name_len;
+	send_message(name_len);
+
 	string ack = "";
 	while(ack == "") {
-		ack = this->receive_data();
+		receive_data(this->buf);
+		ack = rstrip(string(buf));
+	}
+	this->send_message(filename.c_str());
+
+	// Acknowledgement from server
+	int16_t resp = 0;
+	char *r = (char*)&resp;
+	while(!resp) {
+		receive_data(r);
+		resp = htons(resp);
 	}
 
-	if(ack == "-1") {
+	if(resp == -1) {
 		cout << "The file does not exist on server" << endl << endl;
 		return;
 	}
@@ -252,17 +290,19 @@ void Client::delete_file() {
 		deleteConf = rstrip(deleteConf);
 	}
 
-	this->send_message(deleteConf);
+	send_message(deleteConf.c_str());
 	
 	if(deleteConf == "Yes") {
-		string deleted = "";
-		while(deleted == "") {
-			deleted = this->receive_data();
+		int16_t deleted = 0;
+		char *delete_resp = (char*)&resp;
+		while(!deleted) {
+			receive_data(delete_resp);
+			deleted = htons(deleted);
 		}
 		
-		if(deleted == "-1") {
+		if(deleted == -1) {
 			cout << "Failed to delete file" << endl;
-		} else if(deleted == "1") {
+		} else if(deleted == 1) {
 			cout << "File deleted" << endl;
 		}
 	}
@@ -275,26 +315,27 @@ void Client::list() {
 
 	this->send_message("LIST");
 	
-	string msg = "";
-	while(msg == "") {
-		msg = this->receive_data();
+	int32_t data_len = 0;
+	char *dlen = (char*)&data_len;
+	while(!data_len) {
+		receive_data(dlen);
+		data_len = htonl(data_len);
 	}
+	
+	string ack = "ack";
+	send_message(ack.c_str());
 
-	string numBytesString, listing_part;
-
-	this->split_msg(msg, numBytesString, listing_part);
-
+	receive_data(buf);
+	string listing_part = rstrip(string(listing_part));
+	
 	cout << listing_part << endl;
-
-	int bytes = stoi(numBytesString);
-	cout << "BYTES = " << bytes << endl;
 
 	// Loop until all bytes from the file listing are read
 	int bytes_received = listing_part.length();
 	
-	while(bytes_received < bytes) {
-		cout << "BYTES_RECEIVED = " << bytes << endl;
-		listing_part = this->receive_data();
+	while(bytes_received < data_len) {
+		receive_data(buf);
+		string listing_part = rstrip(string(listing_part));
 		cout << listing_part;
 		bytes_received += listing_part.length();
 	}
@@ -315,24 +356,38 @@ void Client::make_dir() {
 	cin >> dir_name;
 	dir_name = rstrip(dir_name);
 
-	string message = to_string(dir_name.length()) + " " + dir_name;
-	this->send_message(message);
-	
-	string res = "";
-	while(res == "") {
-		res = receive_data();
+	int16_t dir_name_len = ntohs(dir_name.length());
+	char *path_len = (char*) &dir_name_len;
+	send_message(path_len);
+
+	string ack = "";
+	while(ack == "") {
+		receive_data(this->buf);
+		ack = rstrip(string(buf));
 	}
-	if(res == "-2") {
+
+	this->send_message(dir_name.c_str());
+
+
+	int16_t resp = 0;
+	char *r = (char*)&resp;	
+	while(!resp) {
+		receive_data(r);
+		resp = htons(resp);
+	}
+	if(resp == -2) {
 		cout << "The directory already exists on server" << endl;
-	} else if(res == "-1") {
+	} else if(resp == -1) {
 		cout << "Error in making directory" << endl;
-	} else if(res == "1"){
+	} else if(resp == 1){
 		cout << "The directory was successfully made" << endl;
 	}
 }
 
 void Client::remove_dir() {
 
+	string message = "RDIR";
+	this->send_message(message.c_str());
 	// Prompt user for directory path
 	cout << "Please enter the path of the directory you would like to delete:" << endl;
 	cout << "--> ";
@@ -341,16 +396,26 @@ void Client::remove_dir() {
 	cin >> dir_name;
 	dir_name = rstrip(dir_name);
 
-	// Send the intent to upload	
-	this->send_message("RDIR");
-	string message = to_string(dir_name.length()) + " " + dir_name;
-	this->send_message(message);
-	
-	string dir_exists = "";
-	while(dir_exists == "") {
-		dir_exists = receive_data();
+	int16_t dir_name_len = ntohs(dir_name.length());
+	char *path_len = (char*) &dir_name_len;
+	send_message(path_len);
+
+	string ack = "";
+	while(ack == "") {
+		receive_data(this->buf);
+		ack = rstrip(string(buf));
 	}
-	if(dir_exists == "-1") {
+
+	this->send_message(dir_name.c_str());
+
+	int16_t dir_exists = 0;
+	char *r = (char*)&dir_exists;	
+	while(!dir_exists) {
+		receive_data(r);
+		dir_exists = htons(dir_exists);
+	}
+
+	if(dir_exists == -1) {
 		cout << "The directory does not exist on server" << endl;
 	} else {
 		string conf = "";
@@ -359,15 +424,17 @@ void Client::remove_dir() {
 			cin >> conf;
 			conf = rstrip(conf);
 		}
-		this->send_message(conf);
+		send_message(conf.c_str());
 		if(conf == "Yes") {
-			string result = "";
-			while(result == "") {
-				result = receive_data();
+			int16_t result = 0;
+			char *r = (char*)&result;	
+			while(!result) {
+				receive_data(r);
+				result = htons(result);
 			}
-			if(result == "-1") {
+			if(result == -1) {
 				cout << "Failed to delete directory" << endl;
-			} else if(result == "1"){
+			} else if(result == 1){
 				cout << "Directory deleted" << endl;
 			}
 		} else {
@@ -378,30 +445,41 @@ void Client::remove_dir() {
 
 void Client::change_dir() {
 
-	this->send_message("CDIR");
+	string message = "CDIR";
+	this->send_message(message.c_str());
 
 	// Prompt user for filename
 	cout << "Please enter the name of the directory to which you would like to change:" << endl;
 	cout << "--> ";
 
-	string dir = "";
-	cin >> dir;
-	dir = rstrip(dir);
+	string dir_name = "";
+	cin >> dir_name;
+	dir_name = rstrip(dir_name);
 
-	// Send the directory
-	this->send_message(to_string(dir.length()) + " " + dir);
 
-	// Retrieve the status
-	string result = "";
-	while(result == "") {
-		result = receive_data();
+	int16_t dir_name_len = ntohs(dir_name.length());
+	char *path_len = (char*) &dir_name_len;
+	send_message(path_len);
+
+	string ack = "";
+	while(ack == "") {
+		receive_data(this->buf);
+		ack = rstrip(string(buf));
 	}
-	int status = stoi(result);
 
-	if(status == -2) {
+	this->send_message(dir_name.c_str());
+
+	int16_t resp = 0;
+	char *r = (char*)&resp;	
+	while(!resp) {
+		receive_data(r);
+		resp = htons(resp);
+	}
+
+	if(resp == -2) {
 		cout << "The directory does not exist on server" << endl;
 	}
-	else if (status == -1) {
+	else if (resp == -1) {
 		cout << "Error in changing directory" << endl;
 	}
 	else {

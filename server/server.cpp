@@ -13,11 +13,12 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "server.h"
 using namespace std;
 
-Server::Server(char *port) {
+Server::Server(char *port, int buf_sz = 4096) {
 
 	// create server address struct
 	bzero((char *) &sin, sizeof(struct sockaddr_in));
@@ -25,9 +26,12 @@ Server::Server(char *port) {
 	sin.sin_addr.s_addr = INADDR_ANY;
 	sin.sin_port = htons(atoi(port));
 	client_addr_size = sizeof(client_addr);
+
+	this->in_buf_sz = buf_sz;
+	this->in_buffer = (char *)malloc(this->in_buf_sz);
 }
 
-Server::Server(const int port) {
+Server::Server(const int port, int buf_sz = 4096) {
 
 	// create server address struct
 	bzero((char *) &sin, sizeof(struct sockaddr_in));
@@ -35,6 +39,9 @@ Server::Server(const int port) {
 	sin.sin_addr.s_addr = INADDR_ANY;
 	sin.sin_port = htons(port);
 	client_addr_size = sizeof(client_addr);
+	
+	this->in_buf_sz = buf_sz;
+	this->in_buffer = (char *)malloc(this->in_buf_sz);
 }
 
 void Server::open_socket() {
@@ -74,47 +81,54 @@ void Server::accept_connection() {
 	}
 }
 
-void Server::send_data(string buffer) {
+void Server::send_data(const char *buffer) {
 
-	int len = buffer.length();
-	if(write(data_socket, buffer.c_str(), len) == -1) {
+	int len = strlen(buffer);
+	if(write(data_socket, buffer, len) == -1) {
 		perror("write() failed");
 		exit(1);
 	}
 }
 
-string Server::receive_data() {
+void Server::receive_data(char *buffer) {
 
-	char in_buffer[4096];
-	bzero(in_buffer, 4096);
+	bzero(buffer, sizeof(buffer));
 
-	if(read(data_socket, (void *) &in_buffer, 4096) == -1) {
+	if(read(data_socket, (void *) &buffer, sizeof(buffer)) == -1) {
 		perror("read() failed");
 		exit(1);
 	}
-	return rstrip(c_to_cpp_string(in_buffer));
 }
 
 // obtained help from https://stackoverflow.com/questions/11952898/c-send-and-receive-file
 void Server::download_file() {
+	
+	int16_t file_name_len;
+	char *data = (char*)&file_name_len;
+	receive_data(data);
+	file_name_len = ntohs(file_name_len);
+		
+	string ack = "ack";
+	send_data(ack.c_str());
 
-	string msg = receive_data();
-	msg = rstrip(msg);
+	receive_data(this->in_buffer);
+	string filename = rstrip(string(in_buffer));
 
-	string size, filename;
-	split_msg(msg, size, filename);
+	struct stat st;
+	int file_exists, file_size;
 
-	if(access(filename.c_str(), F_OK) == -1) {
-		send_data("-1");
+	if((file_exists = access(filename.c_str(), F_OK)) == -1) {
+		int32_t no_file = htonl(file_exists);
+		char *no_f = (char*)&no_file;
+		send_data(no_f);
 		return;
 	}
-	
-	struct stat st;
-	int file_size;
 
     if(stat(filename.c_str(), &st) == 0) {
 		file_size = st.st_size;
-		send_data(to_string(file_size));
+		int32_t f_sz = htonl(file_size);
+		char *file_sz = (char*)&f_sz;
+		send_data(file_sz);
 	}
 	else {
 		perror("stat() failed");
@@ -131,16 +145,25 @@ void Server::download_file() {
 
 void Server::upload_file() {
 
-	string msg = receive_data();
-	msg = rstrip(msg);
+	int16_t file_name_len;
+	char *data = (char*)&file_name_len;
+	receive_data(data);
+	file_name_len = ntohs(file_name_len);
+		
+	string ack = "ack";
+	send_data(ack.c_str());
 
-	string size, filename;
-	split_msg(msg, size, filename);
-	
-	send_data("1");
+	receive_data(this->in_buffer);
+	string filename = rstrip(string(in_buffer));
+
+	ack = "1";
+	send_data(ack.c_str());
 
 	// Receive file size
-	int fileSize = stoi(this->receive_data());
+	int32_t fs;
+	char* f_sz = (char*) &fs;
+	receive_data(f_sz);
+	int file_size = ntohl(fs);
 
 	// Open file to be written
 	FILE* receivedFile = fopen(filename.c_str(), "w");
@@ -150,7 +173,7 @@ void Server::upload_file() {
 	}
 
 	// Receive file and write to disk (obtained help from StackOverflow post titled "c send and receive file")
-	int remainingData = fileSize;
+	int remainingData = file_size;
 	int len;
 	char buffer[4096];
 	struct timeval start, end;
@@ -161,32 +184,43 @@ void Server::upload_file() {
 		remainingData -= len;
 	}
 	gettimeofday(&end, NULL);
-	int throughput = calculate_throughput(fileSize, start, end);
+	int32_t throughput = htonl(calculate_throughput(file_size, start, end));
 
-	send_data(to_string(throughput));
+	char *tp = (char*)&throughput;
+	send_data(tp);
 
 	fclose(receivedFile);
 
 }
 
 void Server::change_directory() {
-	
-	string msg = receive_data();
-	msg = rstrip(msg);
 
-	string size, path;
-	split_msg(msg, size, path);
+	int16_t dir_path_len;
+	char *data = (char*)&dir_path_len;
+	receive_data(data);
+	dir_path_len = ntohs(dir_path_len);
+		
+	string ack = "ack";
+	send_data(ack.c_str());
+
+	receive_data(this->in_buffer);
+	string dir_path = rstrip(string(in_buffer));
 
 	struct stat sb; 
-   
-	if(stat(path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
-		if(chdir(path.c_str()) == -1) {
-			send_data("-1");
+	int16_t resp_num;
+	char *resp = (char*)&resp_num;
+
+	if(stat(dir_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+		if(chdir(dir_path.c_str()) == -1) {
+			resp_num = htons(-1);
+			send_data(resp);
 		} else {
-			send_data("1");
+			resp_num = htons(1);
+			send_data(resp);
 		}
 	} else {
-		send_data("-2");
+		resp_num = htons(-2);
+		send_data(resp);
 	}
 
 }
@@ -224,52 +258,86 @@ void Server::list_directory_contents() {
 	}
 	
 	response = rstrip(response);
+	int32_t data_len = htonl(response.length());
+	char *d_len = (char*)&data_len;
+	send_data(d_len);
+	
+	string ack = "";
+	while(ack == "") {
+		receive_data(this->in_buffer);
+		ack = rstrip(string(in_buffer));
+	}
 
-	this->send_data(to_string(response.length()) + " " + response);
+	this->send_data(response.c_str());
 }
 
 void Server::make_directory() {
-	string msg = receive_data();
+	
+	int16_t dir_path_len;
+	char *data = (char*)&dir_path_len;
+	receive_data(data);
+	dir_path_len = ntohs(dir_path_len);
+		
+	string ack = "ack";
+	send_data(ack.c_str());
 
-	string size, dir_path;
-	this->split_msg(msg, size, dir_path);
-	size = rstrip(size);
-	dir_path = rstrip(dir_path);
+	receive_data(this->in_buffer);
+	string dir_path = rstrip(string(in_buffer));	
 
     struct stat sb;
+	int16_t resp_num;
+	char *resp = (char*)&resp_num;
+	
 	if (stat(dir_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
-		send_data("-2");
+		resp_num = htons(-2);
+		send_data(resp);
 	} else {
 		if(mkdir(dir_path.c_str(), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) == -1) {
 			fprintf(stderr, "mkdir() failed");
-			send_data("-1");
+			resp_num = htons(-1);
+			send_data(resp);
 		} else {
-			send_data("1");
+			resp_num = htons(1);
+			send_data(resp);
 		}
 	}
 }
 
 void Server::remove_directory() {
-	string msg = receive_data();
-	msg = rstrip(msg);
+	
+	int16_t dir_path_len;
+	char *data = (char*)&dir_path_len;
+	receive_data(data);
+	dir_path_len = ntohs(dir_path_len);
+		
+	string ack = "ack";
+	send_data(ack.c_str());
 
-	string size, dir_path;
-	this->split_msg(msg, size, dir_path);
+	receive_data(this->in_buffer);
+	string dir_path = rstrip(string(in_buffer));	
 	
     struct stat sb;
+	int16_t resp_num;
+	char *resp = (char*)&resp_num;
+
 	if (stat(dir_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
-		send_data("1");
+		resp_num = htons(1);
+		send_data(resp);
 	} else {
-		send_data("-1");
+		resp_num = htons(-1);
+		send_data(resp);
 		return;
 	}
 
-	string confirmation = receive_data();
+	receive_data(in_buffer);
+	string confirmation = rstrip(string(in_buffer));
 	if(confirmation == "Yes") {
 		if(rmdir(dir_path.c_str()) == -1) {
-			send_data("-1");
+			resp_num = htons(-1);
+			send_data(resp);
 		} else {
-			send_data("1");
+			resp_num = htons(1);
+			send_data(resp);
 		}
 	}
 }
@@ -316,26 +384,40 @@ void Server::parse_and_execute(string command) {
 }
 
 void Server::delete_file() {
-	string msg = receive_data();
-	msg = rstrip(msg);
+	
+	int16_t file_path_len;
+	char *data = (char*)&file_path_len;
+	receive_data(data);
+	file_path_len = ntohs(file_path_len);
+		
+	string ack = "ack";
+	send_data(ack.c_str());
 
-	string size, file_path;
-	this->split_msg(msg, size, file_path);
+	receive_data(this->in_buffer);
+	string file_path = rstrip(string(in_buffer));	
 	
     struct stat sb;
+	int16_t resp_num;
+	char *resp = (char*)&resp_num;
+	
 	if (stat(file_path.c_str(), &sb) == 0 && S_ISREG(sb.st_mode)) {
-		send_data("1");
+		resp_num = htons(1);
+		send_data(resp);
 	} else {
-		send_data("-1");
+		resp_num = htons(-1);
+		send_data(resp);
 		return;
 	}
 
-	string confirmation = receive_data();
+	receive_data(in_buffer);
+	string confirmation = rstrip(string(in_buffer));
 	if(confirmation == "Yes") {
 		if(unlink(file_path.c_str()) == -1) {
-			send_data("-1");
+			resp_num = htons(-1);
+			send_data(resp);
 		} else {
-			send_data("1");
+			resp_num = htons(1);
+			send_data(resp);
 		}
 	}
 }
